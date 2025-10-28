@@ -1,96 +1,103 @@
 #include "../include/RecoveryAgent.h"
 #include "../include/ResourceManager.h"
 #include <iostream>
-#include <vector>    // Needed for vector operations
-#include <set>       // Needed for finding unique deadlocked processes
-#include <limits>    // Needed for numeric_limits
-#include <algorithm> // Needed for std::remove_if
+#include <algorithm> // For std::remove_if
+#include <vector>
+#include <set>
+#include <limits>
+#include <utility> // Need this for std::pair
 
-using namespace std;
+using namespace std; // Assuming usage of std namespace
 
-// Initiates recovery when a deadlock is detected.
+// Called when a deadlock is detected to break the cycle.
 void RecoveryAgent::initiateRecovery(ResourceManager& rm) {
-    cout << "\nDEADLOCK DETECTED! Initiating recovery..." << endl;
+    cout << "\nDEADLOCK DETECTED! Initiating intelligent recovery..." << endl;
 
-    // Identify processes involved in the deadlock.
+    // Step 1: Identify potentially deadlocked processes.
     set<int> deadlockedProcesses;
-    for (const auto& pair : rm.waitingProcesses) {
-        for (const auto& waitInfo : pair.second) { // waitInfo is pair<int, int>
-            deadlockedProcesses.insert(waitInfo.first);
+    for (const auto& map_pair : rm.waitingProcesses) { // Use a different name than 'pair'
+        for (const std::pair<int, int>& waitEntry : map_pair.second) { // Iterate through pairs
+            deadlockedProcesses.insert(waitEntry.first); // Insert process ID from pair
         }
     }
 
     if (deadlockedProcesses.empty()) {
-        cout << "Recovery Error: Could not identify deadlocked processes." << endl; return;
+        cout << "Recovery Warning: Could not identify any waiting processes during deadlock." << endl;
+        return;
     }
 
-    // Select victim based on lowest cost: (resources held size) - priority.
+    // Step 2: Calculate cost and find minimum cost victim.
     int victimId = -1;
     double minCost = numeric_limits<double>::max();
-    cout << "  Analyzing potential victims..." << endl;
+
+    cout << "  - Analyzing potential victims..." << endl;
     for (int procId : deadlockedProcesses) {
         Process* p = rm.findProcessById(procId);
         if (p) {
-            // CORRECTED: Use -> to access members of pointer p
             double cost = static_cast<double>(p->resourcesHeld.size()) - p->priority;
-            cout << "    - P" << p->id << " cost: " << cost
-                 << " (Res=" << p->resourcesHeld.size() << ", Prio=" << p->priority << ")" << endl;
+            cout << "    - Process " << p->id << " has cost: " << cost
+                      << " (Resources=" << p->resourcesHeld.size() << ", Priority=" << p->priority << ")" << endl;
             if (cost < minCost) {
                 minCost = cost;
                 victimId = p->id;
             }
+        } else {
+             cout << "    - Warning: Process " << procId << " (in waiting list) not found in main process list." << endl;
         }
     }
 
     if (victimId == -1) {
-        cout << "Recovery Error: Could not select a victim." << endl; return;
+        cout << "Recovery failed: Could not select a victim." << endl;
+         if (!deadlockedProcesses.empty()) {
+            victimId = *deadlockedProcesses.begin();
+             cout << "  - Fallback: Selecting first identified process " << victimId << " as victim." << endl;
+        } else {
+            return;
+        }
+    } else {
+       cout << "  - Selected Process " << victimId << " as victim (Lowest Cost: " << minCost << ")." << endl;
     }
-    cout << "  Selected Victim: P" << victimId << " (Lowest Cost: " << minCost << ")." << endl;
 
-    // Preempt resources from the victim.
+    // Step 3: Preempt resources.
     Process* victimProcess = rm.findProcessById(victimId);
     if (victimProcess) {
-        // Create a copy of held resource IDs to iterate over safely.
-        vector<int> heldResourceIds;
-        for(const auto& pair : victimProcess->resourcesHeld) {
-            if (pair.second > 0) heldResourceIds.push_back(pair.first); // Only consider resources actually held
+        vector<int> resourceIdsToRelease;
+        for (const auto& resource_pair : victimProcess->resourcesHeld) { // Use different name
+            resourceIdsToRelease.push_back(resource_pair.first);
         }
 
-        for (int resourceId : heldResourceIds) {
-            // Check again if the victim still holds the resource before releasing.
-            if (victimProcess->resourcesHeld.count(resourceId)) {
-                int count = victimProcess->resourcesHeld.at(resourceId);
-                 if (count > 0) {
-                    cout << "  Preempting " << count << " of R" << resourceId << " from P" << victimId << endl;
-                    // Use releaseResource for correct state updates and notifications.
-                    // Force preemption means we don't care about the return value.
-                    rm.releaseResource(victimId, resourceId, count);
+        for (int resourceId : resourceIdsToRelease) {
+             if (victimProcess->resourcesHeld.count(resourceId)) {
+                int count = victimProcess->resourcesHeld[resourceId];
+                cout << "  - Preempting " << count << " instance(s) of Resource " << resourceId << " from Process " << victimId << endl;
+                Resource* resource = rm.findResourceById(resourceId);
+                 if (resource) {
+                     resource->availableInstances += count;
+                 } else {
+                      cerr << "  - Error: Could not find Resource " << resourceId << " to return instances." << endl;
                  }
-                 // Even if releaseResource failed (shouldn't if count > 0),
-                 // ensure the map entry is cleaned up if count became 0 somehow.
-                 if (victimProcess->resourcesHeld.count(resourceId) && victimProcess->resourcesHeld.at(resourceId) == 0) {
-                      victimProcess->resourcesHeld.erase(resourceId);
-                 }
-            }
+                 victimProcess->resourcesHeld.erase(resourceId);
+             }
         }
-        // Final explicit clear for safety, although releaseResource should handle it.
-        victimProcess->resourcesHeld.clear();
+       victimProcess->resourcesHeld.clear();
 
-        // Remove victim from all waiting queues.
-        for (auto& pair : rm.waitingProcesses) { // pair is <int, vector<pair<int, int>>>
-            auto& waiting_procs = pair.second;
-            waiting_procs.erase(remove_if(waiting_procs.begin(), waiting_procs.end(),
-                                          [victimId](const std::pair<int, int>& item){ return item.first == victimId; }),
-                                waiting_procs.end());
+        // Step 4: Remove victim from waiting lists using remove_if with a lambda.
+        for (auto& map_pair : rm.waitingProcesses) { // Use different name
+            auto& waiting_procs = map_pair.second;
+            // Correct lambda signature: takes the element type of the vector
+            waiting_procs.erase(
+                remove_if(waiting_procs.begin(), waiting_procs.end(),
+                          [victimId](const std::pair<int, int>& p){ return p.first == victimId; }), // Correct type here
+                waiting_procs.end()
+            );
         }
-        // Clean up empty resource entries in waitingProcesses map.
-        for (auto it = rm.waitingProcesses.begin(); it != rm.waitingProcesses.end(); ) {
-             if (it->second.empty()) it = rm.waitingProcesses.erase(it);
-             else ++it;
-        }
+        victimProcess->resetWaitTime();
 
-        cout << "Recovery complete. Deadlock cycle broken." << endl;
+        // Notify potentially unblocked processes
+        rm.notifyWaitingProcesses();
+
+        cout << "Recovery complete. The deadlock cycle is broken." << endl;
     } else {
-         cout << "Recovery Error: Selected victim P" << victimId << " not found." << endl;
+         cout << "Recovery Error: Selected victim Process " << victimId << " not found." << endl;
     }
 }

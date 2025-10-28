@@ -1,17 +1,19 @@
-#pragma once
+#ifndef DEADLOCKDETECTOR_H
+#define DEADLOCKDETECTOR_H
 
-// Forward declaration, as ResourceManager will be passed to this class's methods.
+#include <vector> // Include vector as it's used indirectly via ResourceManager
+
+// Forward declaration
 class ResourceManager;
 
-// This class is dedicated to one thing: detecting deadlocks.
-// It contains the logic for different detection and avoidance algorithms.
+// Class dedicated to detecting and potentially avoiding deadlocks.
 class DeadlockDetector {
 public:
-    // Implements the Banker's Algorithm to check if the system is in a "safe state".
-    // This is a deadlock *avoidance* technique.
+    // Checks if the system is in a "safe state" using Banker's Algorithm (Placeholder).
     bool isSafeState(ResourceManager& rm);
 
-    // Implements a graph-based algorithm (using DFS) to find a circular wait.
-    // This is a deadlock *detection* technique.
+    // Checks for a circular wait using DFS on the wait-for graph.
     bool hasCycle(ResourceManager& rm);
 };
+
+#endif // DEADLOCKDETECTOR_H

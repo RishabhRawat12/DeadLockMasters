@@ -1,11 +1,14 @@
-#pragma once
+#ifndef RECOVERYAGENT_H
+#define RECOVERYAGENT_H
 
+// Forward declaration
 class ResourceManager;
 
-// This class is responsible for fixing a deadlock once it has been detected.
+// Responsible for resolving detected deadlocks.
 class RecoveryAgent {
 public:
-    // This function is called when a deadlock is confirmed. It contains the
-    // logic for choosing a victim and preempting resources to break the cycle.
+    // Initiates the deadlock recovery process (victim selection, preemption).
     void initiateRecovery(ResourceManager& rm);
 };
+
+#endif // RECOVERYAGENT_H

@@ -1,11 +1,23 @@
-#pragma once
+#ifndef STARVATIONGUARDIAN_H
+#define STARVATIONGUARDIAN_H
 
+// Forward declaration
 class ResourceManager;
 
-// This module's job is to prevent starvation. It monitors processes
-// that have been waiting for a long time and takes action.
+// Monitors and prevents process starvation.
 class StarvationGuardian {
+private:
+    long long agingThresholdSeconds; // Configurable time threshold for boosting priority
+
 public:
-    // Implements the "Aging" technique by increasing the priority of long-waiting processes.
+    // Constructor to set the threshold.
+    StarvationGuardian(long long threshold = 5); // Default to 5 seconds
+
+    // Applies the Aging technique.
     void applyAging(ResourceManager& rm);
+
+    // Allows changing the threshold dynamically if needed.
+    void setAgingThreshold(long long threshold);
 };
+
+#endif // STARVATIONGUARDIAN_H
