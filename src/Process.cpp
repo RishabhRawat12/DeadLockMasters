@@ -1,20 +1,17 @@
 #include "../include/Process.h"
-#include <chrono>
+#include <chrono> // Required for time point (though calculation moved to StarvationGuardian)
 
 using namespace std;
 
-// The constructor is pretty simple. When a new process is created,
-// we just assign it the ID we're given and initialize its priority and wait timer to zero.
+// Constructor: Initialize ID, priority, and wait timer.
 Process::Process(int processId) : id(processId), priority(0), waitStartTime(0) {}
 
-// This is part of our "Aging" technique to prevent starvation.
-// If a process waits for too long, we just bump up its priority value.
+// Increase process priority (part of Aging).
 void Process::increasePriority() {
     this->priority++;
 }
 
-// A simple reset function. We call this when a process that was waiting
-// finally gets the resources it needed. It's no longer starving, so its timer can be reset.
+// Reset wait timer (called when resource granted or if not waiting).
 void Process::resetWaitTime() {
     this->waitStartTime = 0;
 }

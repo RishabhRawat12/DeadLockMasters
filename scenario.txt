@@ -1,40 +1,17 @@
-# Deadlock Master Scenario File
-# Scenario: Forced Starvation and Aging
-
 # === DEFINITIONS ===
-# 3 processes, but only 2 instances of a single resource.
 P 0
 P 1
-P 2
-R 0 2
+R 0 1
+R 1 1
+
+# === MAX CLAIMS ===
+M 0 0 1
+M 0 1 1
+M 1 0 1
+M 1 1 1
 
 # === SEQUENCE OF EVENTS ===
-# Step 1: P1 and P2 acquire the resources.
-E 1 REQUEST 0 1
-E 2 REQUEST 0 1
-
-# Step 2: P0 requests the resource and is forced to wait.
-# The 5-second starvation timer for P0 starts NOW.
 E 0 REQUEST 0 1
-
-# Step 3: P1 releases the resource, but P2 immediately grabs it.
-# This simulates P2 "cutting in line" before P0 can get the resource.
-E 1 RELEASE 0 1
-E 2 REQUEST 0 1
-
-# Step 4: Now P2 releases, and P1 immediately grabs it. They are trading it back and forth.
-# P0 continues to wait and "starve".
-E 2 RELEASE 0 1
+E 1 REQUEST 1 1
+E 0 REQUEST 1 1
 E 1 REQUEST 0 1
-
-# DEMO NOTE: DURING THIS PART OF THE SIMULATION, WAIT 5-10 SECONDS.
-# You should see the "Starvation prevention: Increased priority..." message appear.
-
-# Step 5: Finally, a resource is released and no one else cuts in line.
-# P0, now with a higher priority, can finally get the resource.
-E 1 RELEASE 0 1
-E 0 REQUEST 0 1
-
-# Step 6: Clean up.
-E 0 RELEASE 0 1
-E 2 RELEASE 0 1

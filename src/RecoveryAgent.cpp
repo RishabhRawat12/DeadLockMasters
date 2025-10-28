@@ -1,83 +1,96 @@
 #include "../include/RecoveryAgent.h"
 #include "../include/ResourceManager.h"
 #include <iostream>
-#include <algorithm>
-#include <vector>
-#include <set>
-#include <limits>
+#include <vector>    // Needed for vector operations
+#include <set>       // Needed for finding unique deadlocked processes
+#include <limits>    // Needed for numeric_limits
+#include <algorithm> // Needed for std::remove_if
 
 using namespace std;
 
-// This function is the "emergency response" that gets called when a deadlock is confirmed.
-// It's responsible for breaking the cycle by intelligently choosing a process to sacrifice.
+// Initiates recovery when a deadlock is detected.
 void RecoveryAgent::initiateRecovery(ResourceManager& rm) {
-    cout << "\nDEADLOCK DETECTED! Initiating intelligent recovery..." << endl;
+    cout << "\nDEADLOCK DETECTED! Initiating recovery..." << endl;
 
-    // --- OUR CUSTOM OPTIMIZATION: Smarter Victim Selection ---
-    // Instead of just picking a random victim, we'll find the one that's "least costly"
-    // to terminate, causing the least disruption to the whole system.
-
-    // Step 1: First, we need a clean list of all the processes that are actually stuck in the deadlock.
+    // Identify processes involved in the deadlock.
     set<int> deadlockedProcesses;
     for (const auto& pair : rm.waitingProcesses) {
-        for (int waitingId : pair.second) {
-            deadlockedProcesses.insert(waitingId);
+        for (const auto& waitInfo : pair.second) { // waitInfo is pair<int, int>
+            deadlockedProcesses.insert(waitInfo.first);
         }
     }
 
     if (deadlockedProcesses.empty()) {
-        cout << "Recovery failed: Could not identify any deadlocked processes." << endl;
-        return;
+        cout << "Recovery Error: Could not identify deadlocked processes." << endl; return;
     }
 
-    // Step 2: Now, for each of those processes, we'll calculate a "cost".
-    // Our cost function is: (number of resources held) - (process priority).
-    // The idea is that killing a process with few resources and low priority is "cheaper".
-    // We want to find the process with the absolute LOWEST cost.
+    // Select victim based on lowest cost: (resources held size) - priority.
     int victimId = -1;
-    double minCost = numeric_limits<double>::max(); // Start with a ridiculously high number.
-
-    cout << "  - Analyzing potential victims..." << endl;
+    double minCost = numeric_limits<double>::max();
+    cout << "  Analyzing potential victims..." << endl;
     for (int procId : deadlockedProcesses) {
         Process* p = rm.findProcessById(procId);
         if (p) {
-            double cost = p->resourcesHeld.size() - p->priority;
-            
-            cout << "    - Process " << p->id << " has cost: " << cost 
-                      << " (Resources=" << p->resourcesHeld.size() << ", Priority=" << p->priority << ")" << endl;
-            
-            // If this process is "cheaper" than the best one we've found so far, it becomes our new candidate.
+            // CORRECTED: Use -> to access members of pointer p
+            double cost = static_cast<double>(p->resourcesHeld.size()) - p->priority;
+            cout << "    - P" << p->id << " cost: " << cost
+                 << " (Res=" << p->resourcesHeld.size() << ", Prio=" << p->priority << ")" << endl;
             if (cost < minCost) {
                 minCost = cost;
                 victimId = p->id;
             }
         }
     }
-    
+
     if (victimId == -1) {
-        cout << "Recovery failed: Could not select a victim from the deadlocked set." << endl;
-        return;
+        cout << "Recovery Error: Could not select a victim." << endl; return;
     }
+    cout << "  Selected Victim: P" << victimId << " (Lowest Cost: " << minCost << ")." << endl;
 
-    cout << "  - Selected Process " << victimId << " as victim (Lowest Cost: " << minCost << ")." << endl;
-
-    // Step 3: We have our victim. Now we take back all of its resources (preemption).
+    // Preempt resources from the victim.
     Process* victimProcess = rm.findProcessById(victimId);
     if (victimProcess) {
-        for (const auto& pair : victimProcess->resourcesHeld) {
-            int resourceId = pair.first;
-            int count = pair.second;
-            cout << "  - Preempting " << count << " instance(s) of Resource " << resourceId << " from Process " << victimId << endl;
-            rm.findResourceById(resourceId)->availableInstances += count;
+        // Create a copy of held resource IDs to iterate over safely.
+        vector<int> heldResourceIds;
+        for(const auto& pair : victimProcess->resourcesHeld) {
+            if (pair.second > 0) heldResourceIds.push_back(pair.first); // Only consider resources actually held
         }
-        victimProcess->resourcesHeld.clear(); // The victim now holds nothing.
 
-        // Finally, we clean up by removing the victim from any waiting lists it was on.
-        for (auto& pair : rm.waitingProcesses) {
+        for (int resourceId : heldResourceIds) {
+            // Check again if the victim still holds the resource before releasing.
+            if (victimProcess->resourcesHeld.count(resourceId)) {
+                int count = victimProcess->resourcesHeld.at(resourceId);
+                 if (count > 0) {
+                    cout << "  Preempting " << count << " of R" << resourceId << " from P" << victimId << endl;
+                    // Use releaseResource for correct state updates and notifications.
+                    // Force preemption means we don't care about the return value.
+                    rm.releaseResource(victimId, resourceId, count);
+                 }
+                 // Even if releaseResource failed (shouldn't if count > 0),
+                 // ensure the map entry is cleaned up if count became 0 somehow.
+                 if (victimProcess->resourcesHeld.count(resourceId) && victimProcess->resourcesHeld.at(resourceId) == 0) {
+                      victimProcess->resourcesHeld.erase(resourceId);
+                 }
+            }
+        }
+        // Final explicit clear for safety, although releaseResource should handle it.
+        victimProcess->resourcesHeld.clear();
+
+        // Remove victim from all waiting queues.
+        for (auto& pair : rm.waitingProcesses) { // pair is <int, vector<pair<int, int>>>
             auto& waiting_procs = pair.second;
-            waiting_procs.erase(remove(waiting_procs.begin(), waiting_procs.end(), victimId), waiting_procs.end());
+            waiting_procs.erase(remove_if(waiting_procs.begin(), waiting_procs.end(),
+                                          [victimId](const std::pair<int, int>& item){ return item.first == victimId; }),
+                                waiting_procs.end());
+        }
+        // Clean up empty resource entries in waitingProcesses map.
+        for (auto it = rm.waitingProcesses.begin(); it != rm.waitingProcesses.end(); ) {
+             if (it->second.empty()) it = rm.waitingProcesses.erase(it);
+             else ++it;
         }
 
-        cout << "Recovery complete. The deadlock cycle is broken." << endl;
+        cout << "Recovery complete. Deadlock cycle broken." << endl;
+    } else {
+         cout << "Recovery Error: Selected victim P" << victimId << " not found." << endl;
     }
 }

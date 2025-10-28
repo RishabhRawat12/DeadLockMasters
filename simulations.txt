@@ -1,30 +1,41 @@
 ===============================================================
 --- SCENARIO 1: Complex 4-Process "Long Chain" Deadlock ---
 ===============================================================
-# Deadlock Master Scenario File
 # Scenario: "Long Chain Deadlock" (Complex & Surprising)
 
 # === DEFINITIONS ===
-# Define 4 processes
 P 0
 P 1
 P 2
 P 3
-
-# Define 4 unique resources (each with only one instance)
 R 0 1
 R 1 1
 R 2 1
 R 3 1
 
+# === MAX CLAIMS ===
+M 0 0 1
+M 0 1 1
+M 0 2 0
+M 0 3 0
+M 1 0 0
+M 1 1 1
+M 1 2 1
+M 1 3 0
+M 2 0 0
+M 2 1 0
+M 2 2 1
+M 2 3 1
+M 3 0 1
+M 3 1 0
+M 3 2 0
+M 3 3 1
+
 # === SEQUENCE OF EVENTS ===
-# Step 1: Each process acquires its initial resource.
 E 0 REQUEST 0 1
 E 1 REQUEST 1 1
 E 2 REQUEST 2 1
 E 3 REQUEST 3 1
-
-# Step 2: The circular wait is created.
 E 0 REQUEST 1 1
 E 1 REQUEST 2 1
 E 2 REQUEST 3 1
@@ -34,7 +45,6 @@ E 3 REQUEST 0 1
 ===============================================================
 --- SCENARIO 2: Simple 2-Process Deadlock ---
 ===============================================================
-# Deadlock Master Scenario File
 # Scenario: Simple 2-Process Deadlock
 
 # === DEFINITIONS ===
@@ -42,6 +52,12 @@ P 0
 P 1
 R 0 1
 R 1 1
+
+# === MAX CLAIMS ===
+M 0 0 1
+M 0 1 1
+M 1 0 1
+M 1 1 1
 
 # === SEQUENCE OF EVENTS ===
 E 0 REQUEST 0 1
@@ -53,18 +69,22 @@ E 1 REQUEST 0 1
 ===============================================================
 --- SCENARIO 3: No Deadlock (Successful Completion) ---
 ===============================================================
-# Deadlock Master Scenario File
 # Scenario: No Deadlock (Successful Completion)
 
 # === DEFINITIONS ===
-# Define 3 processes
 P 0
 P 1
 P 2
-
-# Define 2 resources with multiple instances
 R 0 2
 R 1 3
+
+# === MAX CLAIMS ===
+M 0 0 1
+M 0 1 1
+M 1 0 1
+M 1 1 2
+M 2 0 1
+M 2 1 0
 
 # === SEQUENCE OF EVENTS ===
 E 0 REQUEST 0 1
@@ -82,83 +102,59 @@ E 2 RELEASE 0 1
 ===============================================================
 --- SCENARIO 4: Starvation and Aging ---
 ===============================================================
-# Deadlock Master Scenario File
 # Scenario: Starvation and Aging Demonstration
 
 # === DEFINITIONS ===
-# We have 3 processes, but only 2 instances of a single resource.
-# This means one process will always be waiting.
 P 0
 P 1
 P 2
 R 0 2
 
+# === MAX CLAIMS ===
+M 0 0 1
+M 1 0 2
+M 2 0 2
+
 # === SEQUENCE OF EVENTS ===
-# Step 1: The two "high-priority" processes (P1, P2) acquire the resources.
 E 1 REQUEST 0 1
 E 2 REQUEST 0 1
-
-# Step 2: The "low-priority" process (P0) requests the resource but is forced to wait.
-# THIS STARTS THE STARVATION TIMER FOR P0.
 E 0 REQUEST 0 1
-
-# Step 3: P1 and P2 continuously use and release the resource,
-# but P0 is never able to get it.
-# DEMO NOTE: You may need to wait 5-10 seconds after this step for the aging to kick in.
 E 1 RELEASE 0 1
 E 2 RELEASE 0 1
-
-# Step 4: After waiting, P0's priority should have been increased by the StarvationGuardian.
-# When it requests the resource again, it should finally get it.
+# Assuming P0 priority increased due to waiting (requires delay in execution)
 E 0 REQUEST 0 1
-
-# Step 5: Clean up.
 E 0 RELEASE 0 1
-
 
 
 ===============================================================
 --- SCENARIO 5: Long Starvation and Aging ---
 ===============================================================
-
-
-# Deadlock Master Scenario File
 # Scenario: Forced Starvation and Aging
 
 # === DEFINITIONS ===
-# 3 processes, but only 2 instances of a single resource.
 P 0
 P 1
 P 2
 R 0 2
 
+# === MAX CLAIMS ===
+M 0 0 1
+M 1 0 2
+M 2 0 2
+
 # === SEQUENCE OF EVENTS ===
-# Step 1: P1 and P2 acquire the resources.
 E 1 REQUEST 0 1
 E 2 REQUEST 0 1
-
-# Step 2: P0 requests the resource and is forced to wait.
-# The 5-second starvation timer for P0 starts NOW.
 E 0 REQUEST 0 1
-
-# Step 3: P1 releases the resource, but P2 immediately grabs it.
-# This simulates P2 "cutting in line" before P0 can get the resource.
+# P1 and P2 swap resources, forcing P0 to wait longer
 E 1 RELEASE 0 1
 E 2 REQUEST 0 1
-
-# Step 4: Now P2 releases, and P1 immediately grabs it. They are trading it back and forth.
-# P0 continues to wait and "starve".
 E 2 RELEASE 0 1
 E 1 REQUEST 0 1
-
-# DEMO NOTE: DURING THIS PART OF THE SIMULATION, WAIT 5-10 SECONDS.
-# You should see the "Starvation prevention: Increased priority..." message appear.
-
-# Step 5: Finally, a resource is released and no one else cuts in line.
-# P0, now with a higher priority, can finally get the resource.
+# (Add more swaps here if needed for longer delays)
+# Assuming P0 priority increased due to waiting (requires delay in execution)
 E 1 RELEASE 0 1
 E 0 REQUEST 0 1
-
-# Step 6: Clean up.
+# Cleanup
 E 0 RELEASE 0 1
 E 2 RELEASE 0 1
