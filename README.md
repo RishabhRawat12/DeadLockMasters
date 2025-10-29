@@ -2,8 +2,6 @@
 
 This project is a C++ simulation of an operating system's resource manager, designed to handle two of the most critical challenges in concurrent programming: **deadlock** and **starvation**. [cite_start]The system, named "The Arbitrator", implements a modular architecture to intelligently detect, resolve, and prevent these issues in a simulated multi-process environment[cite: 64, 79].
 
-This project was developed as part of the Phase 2 Project-Based Learning at Graphic Era University.
-
 ---
 
 ## Key Features
