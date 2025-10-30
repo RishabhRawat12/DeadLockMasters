@@ -1,14 +1,25 @@
-#ifndef RECOVERYAGENT_H
-#define RECOVERYAGENT_H
+#pragma once
 
-// Forward declaration
+#include <map>
+
+using namespace std;
+
+// Forward declarations.
 class ResourceManager;
+class Process;
 
-// Responsible for resolving detected deadlocks.
-class RecoveryAgent {
+// Handles deadlock recovery actions.
+class RecoveryAgent
+{
+private:
+    Process *lastVictimProcess = nullptr;
+    map<int, int> lastVictimPreemptedResources;
+
 public:
-    // Initiates the deadlock recovery process (victim selection, preemption).
-    void initiateRecovery(ResourceManager& rm);
-};
+    // Attempt recovery. Returns true on success.
+    bool initiateRecovery(ResourceManager &rm);
 
-#endif // RECOVERYAGENT_H
+    // Get results of last recovery.
+    Process *getVictimProcess();
+    map<int, int> getPreemptedResources();
+};

@@ -1,23 +1,14 @@
-#ifndef STARVATIONGUARDIAN_H
-#define STARVATIONGUARDIAN_H
+#pragma once
 
-// Forward declaration
+using namespace std;
+
+// Forward declaration.
 class ResourceManager;
 
-// Monitors and prevents process starvation.
-class StarvationGuardian {
-private:
-    long long agingThresholdSeconds; // Configurable time threshold for boosting priority
-
+// Prevents process starvation using Aging.
+class StarvationGuardian
+{
 public:
-    // Constructor to set the threshold.
-    StarvationGuardian(long long threshold = 5); // Default to 5 seconds
-
-    // Applies the Aging technique.
-    void applyAging(ResourceManager& rm);
-
-    // Allows changing the threshold dynamically if needed.
-    void setAgingThreshold(long long threshold);
+    // Check and boost priority of waiting processes.
+    void applyAging(ResourceManager &rm);
 };
-
-#endif // STARVATIONGUARDIAN_H

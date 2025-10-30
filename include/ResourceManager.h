@@ -1,60 +1,84 @@
-#ifndef RESOURCEMANAGER_H
-#define RESOURCEMANAGER_H
+#pragma once
 
 #include <vector>
 #include <map>
-#include <string> // Added for storing request details
-#include <tuple>  // Added for storing request details
-
+#include <list>
+#include <string>
 #include "Process.h"
 #include "Resource.h"
 #include "DeadlockDetector.h"
 #include "RecoveryAgent.h"
 #include "StarvationGuardian.h"
 
-// Forward declarations
-class DeadlockDetector;
-class RecoveryAgent;
-class StarvationGuardian;
+using namespace std;
 
-// Main orchestrator managing processes, resources, requests, and deadlock/starvation handling.
-class ResourceManager {
-public:
-    std::vector<Process> processes;
-    std::vector<Resource> resources;
-
-    // Key: resourceId, Value: list of waiting {processId, requested_count} pairs.
-    std::map<int, std::vector<std::pair<int, int>>> waitingProcesses;
-
-    DeadlockDetector detector;
-    RecoveryAgent recoveryAgent;
-    StarvationGuardian starvationGuardian; // Needs initialization
-
-    ResourceManager(); // Consider initializing StarvationGuardian here
-
-    void addProcess(const Process& p);
-    void addResource(const Resource& r);
-
-    // Handles resource requests, returns true if granted immediately.
-    // Includes deadlock detection and recovery trigger.
-    bool requestResource(int processId, int resourceId, int count, int retryCount = 0); // Added retry counter
-
-    // Handles resource releases, returns true on success.
-    bool releaseResource(int processId, int resourceId, int count);
-
-    // Helper to find a process by ID (returns pointer for modification).
-    Process* findProcessById(int processId);
-    // Helper to find a resource by ID (returns pointer for modification).
-    Resource* findResourceById(int resourceId);
-
-    // Prints the current state of resources and processes.
-    void printState();
-
-    // Centralized function to notify waiting processes after resources are freed.
-    void notifyWaitingProcesses(); // Added helper function
-
-private:
-    const int MAX_REQUEST_RETRIES = 3; // Max retries after deadlock recovery
+// Info on a waiting process.
+struct WaitingInfo
+{
+    int processId;
+    int count;
+    WaitingInfo(int pId, int c) : processId(pId), count(c) {}
 };
 
-#endif // RESOURCEMANAGER_H
+// Enum for strategy selection.
+enum class DeadlockStrategy
+{
+    DETECT, // Use Detection & Recovery
+    AVOID   // Use Avoidance (Banker's)
+};
+
+// Main class to manage the simulation.
+class ResourceManager
+{
+public:
+    vector<Process> processes;
+    vector<Resource> resources;
+
+    // <ResourceID, List of Waiting Processes>
+    map<int, list<WaitingInfo>> waitingProcesses;
+
+    // Component modules.
+    DeadlockDetector detector;
+    RecoveryAgent recoveryAgent;
+    StarvationGuardian starvationGuardian;
+
+    // Current strategy.
+    DeadlockStrategy strategy = DeadlockStrategy::DETECT;
+
+    // Log for the GUI.
+    list<string> logMessages;
+
+    ResourceManager();
+
+    // Set the deadlock strategy.
+    void setStrategy(DeadlockStrategy newStrategy);
+
+    // Add components.
+    void addProcess(const Process &p);
+    void addResource(const Resource &r);
+
+    // Set max resource needs (Banker's).
+    void declareMaxResources(int processId, int resourceId, int maxCount);
+
+    // Core simulation events.
+    bool requestResource(int processId, int resourceId, int count);
+    bool releaseResource(int processId, int resourceId, int count);
+
+    // Find components.
+    Process *findProcessById(int processId);
+    Resource *findResourceById(int resourceId);
+
+    // Check wait list after a release.
+    void checkWaitingProcesses(int resourceId);
+
+    // Trigger aging check.
+    void applyAgingToWaitingProcesses();
+
+    // Add a message to the GUI log.
+    void log(string message);
+
+    // Getters for Banker's Algorithm.
+    const vector<Process> &getProcesses() const { return processes; }
+    const vector<Resource> &getResources() const { return resources; }
+    const map<int, list<WaitingInfo>> &getWaitingProcesses() const { return waitingProcesses; }
+};

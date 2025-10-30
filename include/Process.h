@@ -1,29 +1,26 @@
-#ifndef PROCESS_H
-#define PROCESS_H
+#pragma once
 
-#include <vector> // Keep standard includes if needed by map/vector indirectly
+#include <vector>
 #include <map>
+#include <string>
 
-// Represents a single process in the simulation.
-class Process {
+using namespace std;
+
+// Represents a process in the simulation.
+class Process
+{
 public:
     int id;
-    int priority;           // Used for Aging technique. Higher value = higher priority.
-    long long waitStartTime; // Timestamp when process started waiting. 0 if not waiting.
+    int priority;
+    long long waitStartTime;
 
-    // Key: resourceId, Value: number of instances held.
-    std::map<int, int> resourcesHeld;
+    // <ResourceID, Count>
+    map<int, int> resourcesHeld;
 
-    // Key: resourceId, Value: maximum instances needed (for Banker's Algorithm).
-    std::map<int, int> maxResourcesNeeded;
+    // <ResourceID, MaxCount>
+    map<int, int> maxResourcesNeeded;
 
     Process(int processId);
-
-    // Increases the process's priority.
     void increasePriority();
-
-    // Resets the wait timer.
     void resetWaitTime();
 };
-
-#endif // PROCESS_H

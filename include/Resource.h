@@ -1,14 +1,16 @@
-#ifndef RESOURCE_H
-#define RESOURCE_H
+#pragma once
 
-// Represents a type of resource (e.g., Printer, CPU).
-class Resource {
+#include <string>
+
+using namespace std;
+
+// Represents a type of system resource.
+class Resource
+{
 public:
     int id;
-    int totalInstances;     // Total instances existing in the system.
-    int availableInstances; // Instances currently available.
+    int totalInstances;
+    int availableInstances;
 
     Resource(int resourceId, int totalInstances);
 };
-
-#endif // RESOURCE_H
