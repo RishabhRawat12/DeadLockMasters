@@ -6,6 +6,22 @@ import threading
 import json
 import time
 import os
+import re
+
+# --- Color Constants for Bright Theme ---
+BRIGHT_BG = "#F0F0F0"       # Light Gray/White Background
+BRIGHT_CANVAS_BG = "#FFFFFF" # Pure White Canvas
+TEXT_COLOR = "#333333"      # Dark Text Color
+
+# Node Colors (More Vibrant)
+NODE_GREEN = "#5CB85C"      # Vibrant Green (Running)
+NODE_YELLOW = "#FFC107"     # Vibrant Yellow (Waiting)
+NODE_RED = "#DC3545"        # Vibrant Red (Deadlocked)
+NODE_OUTLINE = "#555555"    # Darker outline for contrast
+
+# Arrow Colors
+ARROW_ALLOCATION = "#5CB85C" # Green for holding arrows
+ARROW_WAITING = "#FFC107"    # Yellow for waiting arrows
 
 # --- Main GUI Application ---
 class DeadlockApp(tk.Tk):
@@ -18,37 +34,45 @@ class DeadlockApp(tk.Tk):
         self.cpp_process = None
         
         # Data for rendering
-        self.proc_coords = {} # 'P0': (x, y)
-        self.res_coords = {}  # 'R0': (x, y)
-        self.state_data = {}  # Last JSON state
+        self.proc_coords = {} 
+        self.res_coords = {} 
+        self.state_data = {}
         self.is_deadlocked = False
         self.deadlock_cycle = []
+        self.flashing = False # New state for controlling the deadlock animation
         
         # --- Create Layout ---
-        # Main container
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Left Column (Controls)
-        left_frame = ttk.Frame(main_frame, width=300)
+        # Left Column (Controls) - Use Light BG
+        left_frame = ttk.Frame(main_frame, width=300, style='Bright.TFrame')
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
 
         # Center Column (Visual Graph)
         center_frame = ttk.Frame(main_frame)
         center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        # Bottom Row (Log)
-        log_frame = ttk.Frame(self, height=200)
+        
+        # Bottom Row (Log) - Use Light BG. 
+        log_frame = ttk.Frame(self, height=200, style='Bright.TFrame')
         log_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(10, 0))
+
+        # Apply custom style to make the application look brighter
+        style = ttk.Style(self)
+        style.theme_use('clam')
+        style.configure('Bright.TFrame', background=BRIGHT_BG)
+        style.configure('TLabel', background=BRIGHT_BG, foreground=TEXT_COLOR)
+        style.configure('TRadiobutton', background=BRIGHT_BG, foreground=TEXT_COLOR)
+        style.configure('TButton', background='#DDDDDD', foreground=TEXT_COLOR)
+        style.configure('TEntry', fieldbackground='#FFFFFF', foreground=TEXT_COLOR)
 
         # --- Populate Controls (Left Frame) ---
         self.build_controls(left_frame)
 
         # --- Populate Graph (Center Frame) ---
-        self.canvas = tk.Canvas(center_frame, bg="#2B2B2B")
+        self.canvas = tk.Canvas(center_frame, bg=BRIGHT_CANVAS_BG)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Bind mouse events for dragging
         self.canvas.tag_bind("process", "<Button-1>", self.on_drag_start)
         self.canvas.tag_bind("process", "<B1-Motion>", self.on_drag_motion)
         self.canvas.tag_bind("resource", "<Button-1>", self.on_drag_start)
@@ -56,8 +80,13 @@ class DeadlockApp(tk.Tk):
         self._drag_data = {"x": 0, "y": 0, "item": None}
 
         # --- Populate Log (Bottom Frame) ---
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, bg="#1E1E1E", fg="#D4D4D4", font=("Consolas", 10), wrap=tk.WORD)
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=20, bg=BRIGHT_BG, fg=TEXT_COLOR, font=("Consolas", 10), wrap=tk.WORD)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+        
+        self.log_text.tag_config("error", foreground=NODE_RED)
+        self.log_text.tag_config("success", foreground=NODE_GREEN)
+        self.log_text.tag_config("warning", foreground="#FFA500")
+        self.log_text.tag_config("info", foreground=TEXT_COLOR)
 
         # --- Start Engine ---
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -130,7 +159,7 @@ class DeadlockApp(tk.Tk):
         self.recover_button = ttk.Button(f_rec, text="Resolve Deadlock", command=self.run_recovery, state=tk.DISABLED)
         self.recover_button.pack(fill=tk.X, padx=5, pady=5)
 
-    # --- GUI -> C++ ---
+    # --- GUI -> C++ (Same as original) ---
 
     def set_strategy(self):
         self.send_command(f"S {self.strategy_var.get()}")
@@ -165,13 +194,11 @@ class DeadlockApp(tk.Tk):
             self.send_command(f"E {pid} {action} {rid} {count}")
 
     def run_recovery(self):
-        self.send_command("C") # 'C' for reCovery
+        self.send_command("C")
 
-    # --- C++ Engine Communication ---
+    # --- C++ Engine Communication (Minor Log Change) ---
 
     def start_cpp_engine(self):
-        # Path to the C++ executable in the 'bin' folder
-        # Assumes gui.py is in 'gui/' and DeadlockMaster.exe is in 'bin/'
         script_dir = os.path.dirname(__file__)
         exe_path = os.path.join(script_dir, "../bin/DeadlockMaster.exe")
         
@@ -187,7 +214,7 @@ class DeadlockApp(tk.Tk):
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            creationflags=subprocess.CREATE_NO_WINDOW # Windows only: hide console
+            creationflags=subprocess.CREATE_NO_WINDOW
         )
         
         self.stdout_thread = threading.Thread(target=self.read_stdout, daemon=True)
@@ -195,9 +222,7 @@ class DeadlockApp(tk.Tk):
         self.stdout_thread.start()
         self.stderr_thread.start()
         
-        # Set initial strategy
         self.set_strategy()
-        # Request initial state
         self.send_command("X")
 
     def send_command(self, command):
@@ -213,10 +238,19 @@ class DeadlockApp(tk.Tk):
     def log_message(self, message):
         def _log():
             self.log_text.config(state=tk.NORMAL)
-            self.log_text.insert(tk.END, message + "\n")
+            
+            tag = "info" 
+            if "DEADLOCK DETECTED" in message or "Request DENIED" in message or "CRITICAL:" in message or "Error:" in message:
+                tag = "error"
+            elif "Request GRANTED" in message or "Recovery successful" in message or "releases" in message:
+                tag = "success"
+            elif "Aging: Increased P" in message:
+                tag = "warning"
+            
+            self.log_text.insert(tk.END, message + "\n", tag)
             self.log_text.see(tk.END)
             self.log_text.config(state=tk.DISABLED)
-        # Schedule GUI updates on the main thread
+
         if hasattr(self, 'log_text'):
             self.after(0, _log)
 
@@ -236,7 +270,6 @@ class DeadlockApp(tk.Tk):
                     is_reading_state = False
                     try:
                         self.state_data = json.loads(current_state_json)
-                        # Schedule GUI update on main thread
                         self.after(0, self.update_gui_from_state)
                     except json.JSONDecodeError as e:
                         print(f"JSON Parse Error: {e}\nData: {current_state_json}")
@@ -256,16 +289,190 @@ class DeadlockApp(tk.Tk):
             except:
                 break
 
-    # --- GUI Update Logic ---
+    # --- Animation Logic (Re-used/Modified from previous step) ---
+
+    def animate_request(self, pId, rId, count, action):
+        """Initializes and starts the animation of a resource token."""
+        
+        start_x, start_y = self.proc_coords.get(pId, (0, 0))
+        end_x, end_y = self.res_coords.get(rId, (0, 0))
+        
+        if start_x == 0 and start_y == 0:
+            self.draw_graph()
+            return
+
+        if action == 'releases':
+            token_color = ARROW_ALLOCATION
+        else:
+            token_color = ARROW_WAITING
+
+        token_id = self.canvas.create_oval(
+            start_x - 5, start_y - 5, start_x + 5, start_y + 5, 
+            fill=token_color, outline=token_color, tags=("moving_token")
+        )
+        
+        text_id = self.canvas.create_text(
+            start_x, start_y - 10, text=str(count), fill=TEXT_COLOR, 
+            font=("Arial", 7, "bold"), tags=("moving_token_text")
+        )
+
+        total_distance = ((end_x - start_x)**2 + (end_y - start_y)**2)**0.5
+        steps = max(20, int(total_distance / 10)) 
+        delay = 15
+
+        self.move_token(token_id, text_id, start_x, start_y, end_x, end_y, steps, delay, 0, action)
+
+
+    def move_token(self, token_id, text_id, start_x, start_y, end_x, end_y, steps, delay, step_count, action):
+        """Recursively moves the token across the canvas."""
+
+        if not self.canvas.winfo_exists() or step_count >= steps:
+            self.canvas.delete(token_id)
+            self.canvas.delete(text_id)
+            self.draw_graph() 
+            
+            # After a potential deadlock/aging trigger, restart the animation if needed
+            if self.is_deadlocked and not self.flashing and self.strategy_var.get() == "DETECT":
+                self.flashing = True
+                self.flash_deadlock_cycle()
+            
+            return
+
+        progress = step_count / steps
+        current_x = start_x + (end_x - start_x) * progress
+        current_y = start_y + (end_y - start_y) * progress
+
+        self.canvas.coords(
+            token_id, 
+            current_x - 5, current_y - 5, 
+            current_x + 5, current_y + 5
+        )
+        self.canvas.coords(text_id, current_x, current_y)
+
+        step_count += 1
+        self.after(delay, lambda: self.move_token(
+            token_id, text_id, start_x, start_y, end_x, end_y, steps, delay, step_count, action
+        ))
+
+    
+    def flash_deadlock_cycle(self, state=0):
+        """Creates the pulsing/flashing animation for deadlocked processes."""
+        if not self.is_deadlocked or not self.flashing:
+            # Stop the flashing and revert to static draw
+            self.draw_graph(flash_color=NODE_RED)
+            return
+
+        flash_color = NODE_RED if state % 2 == 0 else BRIGHT_CANVAS_BG # Flash between Red and White
+        
+        # Redraw the graph for one flash state
+        self.draw_graph(flash_color=flash_color)
+        
+        # Continue the loop
+        self.after(300, lambda: self.flash_deadlock_cycle(state + 1))
+
+
+    def pulse_aging_process(self, pId, start_time):
+        """Creates a temporary vibrant pulse for an aging process."""
+        duration = 500 # 500ms pulse
+        if (time.time() * 1000) - start_time > duration:
+            self.draw_graph()
+            return
+            
+        pulse_color = "#FFD700" # Bright Gold
+        p = self.get_process_state(pId)
+        
+        if p:
+            x, y = self.proc_coords.get(pId, (0,0))
+            
+            # Draw a temporary glowing circle *under* the actual node
+            r = 25 + 10 * ((time.time() * 1000 - start_time) / duration) # Radius shrinks/expands
+            
+            self.canvas.create_oval(x-r, y-r, x+r, y+r, 
+                                    outline=pulse_color, width=4, 
+                                    tags=("pulse"))
+            
+            # Continue the pulse animation
+            self.after(50, lambda: self.pulse_aging_process(pId, start_time))
+        
+        # Redraw the graph to cover the pulse element (it will draw the main graph, then call the pulse)
+        self.draw_graph() 
+        
+    def animate_victim_mark(self, victimId, phase=0):
+        """Draws a pulsing 'X' on the victim process."""
+        if not self.canvas.winfo_exists(): return
+        
+        if phase >= 10: # Stop after 10 phases (1.5 seconds)
+            self.draw_graph()
+            return
+            
+        x, y = self.proc_coords.get(victimId, (0, 0))
+        
+        self.draw_graph() 
+        
+        color = NODE_RED if phase % 2 == 0 else BRIGHT_CANVAS_BG
+        width = 4 if phase % 2 == 0 else 2
+        
+        self.canvas.create_line(x - 15, y - 15, x + 15, y + 15, fill=color, width=width, tags=("victim_mark"))
+        self.canvas.create_line(x - 15, y + 15, x + 15, y - 15, fill=color, width=width, tags=("victim_mark"))
+
+        self.after(150, lambda: self.animate_victim_mark(victimId, phase + 1))
+
+
+    def get_process_state(self, pId):
+        """Helper to get process data."""
+        for p in self.state_data.get('processes', []):
+            if p['id'] == pId:
+                return p
+        return None
+    
+    # --- GUI Update Logic (Triggers animations) ---
 
     def update_gui_from_state(self):
         if not self.state_data: return
         
-        # 1. Update Logs
-        for msg in self.state_data.get('log', []):
+        logs = self.state_data.get('log', [])
+        
+        is_event_log = False
+        is_aging_log = False
+        
+        if logs:
+            first_log = logs[0]
+            
+            # 1. Check for Request/Release (triggers token animation)
+            match_event = re.search(r"P(\d+)\s+(requests|releases)\s+(\d+)\s+of\s+R(\d+)", first_log)
+            if match_event:
+                is_event_log = True
+                pId = int(match_event.group(1))
+                action = match_event.group(2)
+                count = int(match_event.group(3))
+                rId = int(match_event.group(4))
+                self.animate_request(pId, rId, count, action) 
+
+            # 2. Check for Aging Priority Boost (triggers pulse animation)
+            match_aging = re.search(r"\*\*\* Aging: Increased P(\d+) priority to \d+ \*\*\*", first_log)
+            if match_aging:
+                pId = int(match_aging.group(1))
+                self.pulse_aging_process(pId, time.time() * 1000)
+                is_aging_log = True
+
+            # 3. Check for Victim Selection (triggers mark animation)
+            match_victim = re.search(r"Selected P(\d+) as victim", first_log)
+            if match_victim:
+                victimId = int(match_victim.group(1))
+                
+                self.flashing = False 
+                self.animate_victim_mark(victimId)
+                is_event_log = True 
+
+            # 4. Check for Recovery Success/Failure (stops any residual animation/flashing)
+            if re.search(r"Recovery successful|Recovery FAILED", first_log):
+                 self.flashing = False
+
+        # 5. Update Logs
+        for msg in logs:
             self.log_message(f"[Engine] {msg}")
 
-        # 2. Update Comboboxes
+        # 6. Update Controls/Deadlock Status (Standard logic)
         proc_ids = [p['id'] for p in self.state_data.get('processes', [])]
         res_ids = [r['id'] for r in self.state_data.get('resources', [])]
         self.max_p_combo['values'] = proc_ids
@@ -273,96 +480,128 @@ class DeadlockApp(tk.Tk):
         self.max_r_combo['values'] = res_ids
         self.event_r_combo['values'] = res_ids
         
-        # 3. Update Deadlock Status
         self.deadlock_cycle = self.state_data.get('deadlock_cycle', [])
-        self.is_deadlocked = bool(self.deadlock_cycle)
+        is_deadlocked_now = bool(self.deadlock_cycle)
         
-        if self.is_deadlocked and self.strategy_var.get() == "DETECT":
+        if is_deadlocked_now and self.strategy_var.get() == "DETECT":
             self.recover_button.config(state=tk.NORMAL)
+            if not self.flashing:
+                self.flashing = True
+                self.flash_deadlock_cycle()
         else:
             self.recover_button.config(state=tk.DISABLED)
+            self.flashing = False
+            
+        self.is_deadlocked = is_deadlocked_now
 
-        # 4. Redraw Graph
-        self.draw_graph()
+        # 7. Redraw Graph only if no animation was triggered
+        if not is_event_log and not is_aging_log:
+            self.draw_graph()
 
-    def draw_graph(self):
+
+    def draw_graph(self, flash_color=None):
         self.canvas.delete("all")
         if not self.state_data: return
 
-        # Auto-layout logic (simple)
         self.update_node_coords(self.state_data.get('processes', []), self.state_data.get('resources', []))
 
-        # Draw Resources (Squares)
+        # Draw Resources (Squares) - ATTRACTIVE ENHANCEMENTS
         for r in self.state_data.get('resources', []):
             rid = r['id']
-            x, y = self.res_coords[rid]
+            x, y = self.res_coords.get(rid, (0,0))
             tags = ("resource", f"res_{rid}")
-            self.canvas.create_rectangle(x-20, y-20, x+20, y+20, fill="#3C3F41", outline="#888888", width=2, tags=tags)
-            self.canvas.create_text(x, y, text=f"R{rid}\n({r['available']}/{r['total']})", fill="#BBBBBB", font=("Arial", 9, "bold"), tags=tags)
+            
+            # --- Attractive Enhancement: Thicker, darker outline for impact ---
+            rect_fill = "#EFEFEF" # Slightly darker inner color than canvas BG
+            self.canvas.create_rectangle(x-20, y-20, x+20, y+20, fill=rect_fill, outline=NODE_OUTLINE, width=3, tags=tags)
+            
+            # Resource Status Bar (Bright Teal for capacity)
+            if r['total'] > 0:
+                percentage = r['available'] / r['total']
+                bar_height = 40 * percentage
+                
+                # Draw the main bar
+                self.canvas.create_rectangle(
+                    x - 18, 
+                    y + 20 - bar_height,
+                    x + 18, 
+                    y + 20, 
+                    fill="#00BFA5", # Bright Teal for high visibility
+                    outline=""
+                )
+                # Subtle white highlight line at the top of the filled portion
+                if bar_height > 1:
+                     self.canvas.create_line(x-18, y + 20 - bar_height, x+18, y + 20 - bar_height, fill="#FFFFFF", width=1)
+                
+            self.canvas.create_text(x, y, text=f"R{rid}\n({r['available']}/{r['total']})", fill=TEXT_COLOR, font=("Arial", 9, "bold"), tags=tags)
 
-        # Draw Processes (Circles)
+        # Draw Processes (Circles) - ATTRACTIVE ENHANCEMENTS
         for p in self.state_data.get('processes', []):
             pid = p['id']
-            x, y = self.proc_coords[pid]
+            x, y = self.proc_coords.get(pid, (0,0))
             
-            # Determine color
-            fill_color = "#3C7A3C" # Green (Running)
+            fill_color = NODE_GREEN
             if any(w['process_id'] == pid for w in self.state_data.get('waiting', [])):
-                fill_color = "#A9892D" # Yellow (Waiting)
+                fill_color = NODE_YELLOW
+                
             if pid in self.deadlock_cycle:
-                fill_color = "#A9302D" # Red (Deadlocked)
-
+                fill_color = flash_color if flash_color is not None else NODE_RED
+                
             tags = ("process", f"proc_{pid}")
-            self.canvas.create_oval(x-20, y-20, x+20, y+20, fill=fill_color, outline="#888888", width=2, tags=tags)
-            self.canvas.create_text(x, y, text=f"P{pid}\nPrio: {p['priority']}", fill="#DDDDDD", font=("Arial", 9, "bold"), tags=tags)
+            
+            # --- Attractive Enhancement: Thicker outline and inner highlight ---
+            # 1. Main circle with thicker outline
+            self.canvas.create_oval(x-20, y-20, x+20, y+20, fill=fill_color, outline=NODE_OUTLINE, width=3, tags=tags)
+            # 2. Inner highlight circle for 3D/depth effect
+            self.canvas.create_oval(x-17, y-17, x+17, y+17, outline="#FFFFFF", width=1, tags=tags)
+            # 3. Text
+            self.canvas.create_text(x, y, text=f"P{pid}\nPrio: {p['priority']}", fill=TEXT_COLOR, font=("Arial", 9, "bold"), tags=tags)
         
-        # Draw Arrows
+        # Draw Arrows (Same as previous step)
         # Allocation (Resource -> Process)
         for p in self.state_data.get('processes', []):
             pid = p['id']
             for held in p.get('held', []):
                 rid = held['id']
                 if pid in self.proc_coords and rid in self.res_coords:
-                    self.draw_arrow(self.res_coords[rid], self.proc_coords[pid], f"{held['count']}", "#6A8759")
+                    self.draw_arrow(self.res_coords[rid], self.proc_coords[pid], f"{held['count']}", ARROW_ALLOCATION, width=3)
 
         # Waiting (Process -> Resource)
         for w in self.state_data.get('waiting', []):
             pid = w['process_id']
             rid = w['resource_id']
-            color = "#A9892D" # Yellow
+            color = ARROW_WAITING
             if pid in self.deadlock_cycle:
-                color = "#A9302D" # Red
+                color = NODE_RED
                 
             if pid in self.proc_coords and rid in self.res_coords:
-                self.draw_arrow(self.proc_coords[pid], self.res_coords[rid], f"{w['count']}", color)
+                self.draw_arrow(self.proc_coords[pid], self.res_coords[rid], f"{w['count']}", color, width=1)
 
-    def draw_arrow(self, p1, p2, text, color):
+    def draw_arrow(self, p1, p2, text, color, width=2):
         x1, y1 = p1
         x2, y2 = p2
-        self.canvas.create_line(x1, y1, x2, y2, arrow=tk.LAST, fill=color, width=2)
-        # Draw count label near the middle of the line
-        self.canvas.create_text((x1+x2)/2, (y1+y2)/2 - 10, text=text, fill=color, font=("Arial", 9, "bold"))
+        self.canvas.create_line(x1, y1, x2, y2, arrow=tk.LAST, fill=color, width=width)
+        self.canvas.create_text((x1+x2)/2, (y1+y2)/2 - 10, text=text, fill=TEXT_COLOR, font=("Arial", 9, "bold"))
         
     def update_node_coords(self, processes, resources):
-        # Simple layout: Processes on left, Resources on right
         canvas_w = self.canvas.winfo_width()
         canvas_h = self.canvas.winfo_height()
         
         proc_x = canvas_w * 0.25
         for i, p in enumerate(processes):
             pid = p['id']
-            if pid not in self.proc_coords:
+            if pid not in self.proc_coords or self.proc_coords[pid] == (0,0):
                 y = (canvas_h / (len(processes) + 1)) * (i + 1)
                 self.proc_coords[pid] = (proc_x, y)
                 
         res_x = canvas_w * 0.75
         for i, r in enumerate(resources):
             rid = r['id']
-            if rid not in self.res_coords:
+            if rid not in self.res_coords or self.res_coords[rid] == (0,0):
                 y = (canvas_h / (len(resources) + 1)) * (i + 1)
                 self.res_coords[rid] = (res_x, y)
 
-    # --- Drag and Drop ---
+    # --- Drag and Drop (Same as original) ---
     def on_drag_start(self, event):
         self._drag_data["item"] = self.canvas.find_closest(event.x, event.y)[0]
         self._drag_data["x"] = event.x
@@ -375,7 +614,6 @@ class DeadlockApp(tk.Tk):
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
         
-        # Update internal coords
         tags = self.canvas.gettags(self._drag_data["item"])
         if "process" in tags:
             pid = [t.split("_")[1] for t in tags if t.startswith("proc_")][0]
@@ -384,10 +622,9 @@ class DeadlockApp(tk.Tk):
             rid = [t.split("_")[1] for t in tags if t.startswith("res_")][0]
             self.res_coords[int(rid)] = (event.x, event.y)
         
-        self.draw_graph() # Redraw all arrows while dragging
+        self.draw_graph()
 
     def on_closing(self):
-        # Clean up C++ child process
         if self.cpp_process:
             self.cpp_process.terminate()
             self.cpp_process.wait()
