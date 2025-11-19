@@ -1,16 +1,12 @@
-#include "../include/ResourceManager.h"
+#include "include/ResourceManager.h"
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <set> // <-- ADDED THIS INCLUDE
+#include <set> 
 
 using namespace std;
 
-// This new main.cpp is not a simulation runner.
-// It is a command-line "engine" that the Python GUI will control.
-// It reads commands from cin and prints JSON state and logs to cout.
 
-// Helper to send a simple log message.
 void send_log(string message)
 {
     cout << "LOG: " << message << endl;
